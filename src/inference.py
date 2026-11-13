@@ -97,7 +97,7 @@ def recognize_lines(image_path: str | Path | Any, engine: Any, bbox_offset: tupl
 
 
 def recognize_lines_batch(images: list[Any], engine: Any, bbox_offsets: list[tuple[int, int]] | None = None, bbox_scales: list[float] | None = None) -> list[list[dict[str, Any]]]:
-    """Batch images while preserving one raw-line list per input image."""
+    """Process crops sequentially to limit peak memory on small cloud instances."""
     if bbox_offsets is None:
         bbox_offsets = [(0, 0)] * len(images)
     if len(images) != len(bbox_offsets):
@@ -106,11 +106,14 @@ def recognize_lines_batch(images: list[Any], engine: Any, bbox_offsets: list[tup
         bbox_scales = [1.0] * len(images)
     if len(images) != len(bbox_scales):
         raise ValueError("Each input image needs one bounding-box scale")
-    model_images = [np.asarray(image.convert("RGB") if isinstance(image, Image.Image) else image) for image in images]
-    predictions = list(engine.predict(model_images))
-    if len(predictions) != len(images):
-        raise RuntimeError(f"PaddleOCR returned {len(predictions)} results for {len(images)} images")
-    return [recognize_lines_from_payload(_prediction_payload(item), offset, scale) for item, offset, scale in zip(predictions, bbox_offsets, bbox_scales)]
+    results = []
+    for image, offset, scale in zip(images, bbox_offsets, bbox_scales):
+        model_image = np.asarray(image.convert("RGB") if isinstance(image, Image.Image) else image)
+        predictions = list(engine.predict(model_image))
+        if len(predictions) != 1:
+            raise RuntimeError(f"PaddleOCR returned {len(predictions)} results for one crop")
+        results.append(recognize_lines_from_payload(_prediction_payload(predictions[0]), offset, scale))
+    return results
 
 
 def recognize_lines_from_payload(payload: dict[str, Any], bbox_offset: tuple[int, int] = (0, 0), bbox_scale: float = 1.0) -> list[dict[str, Any]]:

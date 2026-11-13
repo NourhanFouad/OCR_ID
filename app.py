@@ -217,6 +217,9 @@ if mode == "Run OCR on a new image":
     if uploaded is not None:
         try:
             image = ImageOps.exif_transpose(Image.open(io.BytesIO(uploaded.getvalue()))).convert("RGB")
+            # Cloud instances have tight RAM limits. Keep enough pixels for OCR
+            # while avoiding oversized full-image tensors and crop batches.
+            image.thumbnail((2400, 2400), Image.Resampling.LANCZOS)
         except (UnidentifiedImageError, OSError) as exc:
             st.error(f"Could not decode image: {exc}")
         else:
@@ -252,8 +255,8 @@ if mode == "Run OCR on a new image":
                 )
             if st.button("Extract", type="primary"):
                 with tempfile.TemporaryDirectory(prefix="egid_ocr_") as temp_dir:
-                    temp_path = Path(temp_dir) / ("input" + (Path(uploaded.name).suffix or ".png"))
-                    temp_path.write_bytes(uploaded.getvalue())
+                    temp_path = Path(temp_dir) / "input.png"
+                    image.save(temp_path, format="PNG", optimize=True)
                     try:
                         with st.spinner("Running OCR and collecting raw line predictions…"):
                             use_regions = try_front_regions or try_back_regions
@@ -268,7 +271,7 @@ if mode == "Run OCR on a new image":
                                 device="cpu",
                                 front_region_profile=try_front_regions,
                                 back_region_profile=try_back_regions,
-                                engine=get_ocr_engine(language, True),
+                                engine=get_ocr_engine(language, False),
                                 region_engine=get_ocr_engine(language, False) if use_regions else None,
                                 # The official PP-OCRv5 baseline never uses the experimental checkpoint's
                                 # numeric reversal heuristic.

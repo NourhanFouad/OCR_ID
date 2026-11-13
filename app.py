@@ -271,7 +271,6 @@ if mode == "Run OCR on a new image":
                                 back_region_profile=try_back_regions,
                                 engine=get_ocr_engine(language, False),
                                 region_engine=get_ocr_engine(language, False) if use_regions else None,
-                                apply_numeric_reading_order_candidate=False,
                             )
                     except Exception as exc:
                         st.error(f"OCR could not run: {exc}")

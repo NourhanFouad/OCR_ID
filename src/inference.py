@@ -29,7 +29,7 @@ def _prediction_payload(item: Any) -> dict[str, Any]:
     return value
 
 
-def create_ocr_engine(language: str = "ar", model_dir: str | Path | None = None, device: str = "cpu", detector_size: str = "mobile", textline_orientation: bool = False, batch_size: int = 1):
+def create_ocr_engine(language: str = "ar", model_dir: str | Path | None = None, device: str = "cpu", detector_size: str = "mobile", textline_orientation: bool = False):
     """Create one reusable PaddleOCR engine. Set PADDLE_PDX_CACHE_HOME before import/use."""
     project_root = Path(__file__).resolve().parents[1]
     os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(project_root / "models" / "pretrained" / "paddlex_cache"))
@@ -58,14 +58,6 @@ def create_ocr_engine(language: str = "ar", model_dir: str | Path | None = None,
         if not path.exists():
             raise FileNotFoundError(f"Configured recognition model directory does not exist: {path}")
         kwargs["text_recognition_model_dir"] = str(path)
-    if batch_size > 1:
-        from paddlex.inference.pipelines import load_pipeline_config
-
-        pipeline_config = load_pipeline_config("OCR")
-        pipeline_config["batch_size"] = batch_size
-        pipeline_config["use_doc_preprocessor"] = False
-        pipeline_config["use_textline_orientation"] = textline_orientation
-        kwargs["paddlex_config"] = pipeline_config
     return PaddleOCR(**kwargs)
 
 
@@ -315,22 +307,6 @@ def _normalize_arabic_label(value: str) -> str:
     return value
 
 
-def _numeric_reading_order_candidate(raw: str | None) -> str | None:
-    """Return the experimentally validated reverse-order candidate for numeric-only text.
-
-    The fine-tuned PP-OCRv5 checkpoint emits the printed numeric fields in the
-    opposite character order to their source labels on the current validation
-    split (100/100 exact after reversal). Keep raw OCR separate and only apply
-    this candidate to strings made entirely of digits and common separators.
-    """
-    if not raw:
-        return raw
-    allowed_separators = set(" /-.:,")
-    if all(char.isdigit() or char in allowed_separators for char in raw):
-        return raw[::-1].strip()
-    return raw
-
-
 def _known_front_header_suggestion(lines: list[dict[str, Any]], side: str, image_size: tuple[int, int]) -> dict[str, Any] | None:
     """Offer a review-only phrase candidate for the common Egyptian ID header."""
     if side != "front" or not image_size[1]:
@@ -361,7 +337,7 @@ def _known_front_header_suggestion(lines: list[dict[str, Any]], side: str, image
     }
 
 
-def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown", side_source: str | None = None, template_mapping_confirmed: bool = False, model_dir: str | Path | None = None, device: str = "cpu", front_region_profile: bool = False, back_region_profile: bool = False, engine: Any | None = None, region_engine: Any | None = None, apply_numeric_reading_order_candidate: bool = False) -> dict[str, Any]:
+def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown", side_source: str | None = None, template_mapping_confirmed: bool = False, model_dir: str | Path | None = None, device: str = "cpu", front_region_profile: bool = False, back_region_profile: bool = False, engine: Any | None = None, region_engine: Any | None = None) -> dict[str, Any]:
     """Run one language candidate and return raw lines with boxes and scores.
 
     PaddleOCR downloads its configured pretrained weights on first use if they
@@ -369,7 +345,6 @@ def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown",
     """
     image = load_rgb(image_path)
     image_size = image.size
-    fixed_template_geometry = template_mapping_confirmed and side in {"front", "back"} and image_size == (1080, 1080)
     engine = engine or create_ocr_engine(language, model_dir, device, textline_orientation=True)
     lines = recognize_lines(image, engine)
 
@@ -391,7 +366,7 @@ def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown",
         for name, candidates in zip(names, region_lines):
             raw_candidate = _join_region_lines(candidates)
             numeric_field = name in {"national_id", "birth_date", "issue_date", "expiry_date"}
-            ordered_candidate = _numeric_reading_order_candidate(raw_candidate) if numeric_field and apply_numeric_reading_order_candidate else raw_candidate
+            ordered_candidate = raw_candidate
             confidence = min((line["confidence"] for line in candidates if line.get("confidence") is not None), default=None)
             retry_candidates: list[dict[str, Any]] = []
             occupation_contaminated = name == "occupation" and bool(digits_for_validation(ordered_candidate or ""))
@@ -434,10 +409,7 @@ def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown",
                     and (_line_center_y(line) is not None and _line_center_y(line) <= image_size[1] * 0.20)
                 ]
                 context_line = date_lines[0] if date_lines else None
-                context_date_sources = [
-                    _numeric_reading_order_candidate(source) if apply_numeric_reading_order_candidate else source
-                    for source in date_lines
-                ]
+                context_date_sources = date_lines
                 date_sources = context_date_sources + date_sources
             if name == "expiry_date":
                 primary_expiry = next((line.get("raw_text") for line in lines if any(token in (line.get("raw_text") or "") for token in ("سارية", "حتى"))), None)
@@ -447,11 +419,7 @@ def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown",
                     if candidate_line:
                         date_match = re.search(r"[٠-٩0-9]{6,12}", candidate_line)
                         if date_match:
-                            date_sources.append(
-                                _numeric_reading_order_candidate(date_match.group(0))
-                                if apply_numeric_reading_order_candidate
-                                else date_match.group(0)
-                            )
+                            date_sources.append(date_match.group(0))
                         else:
                             date_sources.append(candidate_line)
             formatted_date = next((value for source in date_sources if (value := format_date_candidate(source, allow_year_month=name == "issue_date")) is not None), None) if name in {"birth_date", "issue_date", "expiry_date"} else None

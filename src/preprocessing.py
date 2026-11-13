@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps
 
 
 EGYPTIAN_FRONT_ZONES = {
@@ -31,56 +31,11 @@ EGYPTIAN_BACK_ZONES = {
 }
 
 
-def inspect_image(path: str | Path) -> dict[str, Any]:
-    path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    try:
-        with Image.open(path) as original:
-            original.verify()
-        with Image.open(path) as image:
-            return {
-                "path": str(path),
-                "format": image.format,
-                "width": image.width,
-                "height": image.height,
-                "mode": image.mode,
-                "frames": getattr(image, "n_frames", 1),
-                "exif_orientation": image.getexif().get(274),
-                "valid": True,
-            }
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
-        return {"path": str(path), "valid": False, "error": f"{type(exc).__name__}: {exc}"}
-
-
-def load_rgb(path: str | Path, max_side: int | None = None) -> Image.Image:
-    """Load EXIF-oriented RGB pixels and optionally downsize without cropping."""
+def load_rgb(path: str | Path) -> Image.Image:
+    """Load EXIF-oriented RGB pixels without cropping or resizing."""
     with Image.open(path) as image:
         image = ImageOps.exif_transpose(image).convert("RGB")
-        if max_side is not None:
-            if max_side <= 0:
-                raise ValueError("max_side must be a positive integer")
-            if max(image.size) > max_side:
-                scale = max_side / max(image.size)
-                new_size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
-                image = image.resize(new_size, Image.Resampling.LANCZOS)
         return image.copy()
-
-
-def apply_clahe(image: Image.Image, clip_limit: float = 2.0, tile_grid_size: tuple[int, int] = (8, 8)) -> Image.Image:
-    """Optional OpenCV CLAHE; caller should retain and compare the original."""
-    try:
-        import cv2
-        import numpy as np
-    except ImportError as exc:
-        raise RuntimeError("Optional contrast enhancement requires opencv-python-headless and numpy.") from exc
-    rgb = np.asarray(image.convert("RGB"))
-    lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
-    lightness, channel_a, channel_b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
-    enhanced = cv2.merge((clahe.apply(lightness), channel_a, channel_b))
-    result = cv2.cvtColor(enhanced, cv2.COLOR_LAB2RGB)
-    return Image.fromarray(result)
 
 
 def field_preprocessing_candidates(image: Image.Image) -> dict[str, Image.Image]:

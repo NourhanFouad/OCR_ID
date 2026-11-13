@@ -219,7 +219,7 @@ if mode == "Run OCR on a new image":
             image = ImageOps.exif_transpose(Image.open(io.BytesIO(uploaded.getvalue()))).convert("RGB")
             # Cloud instances have tight RAM limits. Keep enough pixels for OCR
             # while avoiding oversized full-image tensors and crop batches.
-            image.thumbnail((2400, 2400), Image.Resampling.LANCZOS)
+            image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
         except (UnidentifiedImageError, OSError) as exc:
             st.error(f"Could not decode image: {exc}")
         else:

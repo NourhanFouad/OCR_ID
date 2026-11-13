@@ -156,6 +156,8 @@ def render_region_candidate(field_name: str, candidate: dict[str, Any], image: I
         status = candidate.get("field_candidate_status", "تحتاج مراجعة")
         if status.startswith("derived_from_national_id"):
             status = "مستنتج من الرقم القومي · يحتاج تأكيدًا بصريًا"
+        elif status == "normalized_ocr_needs_human_review":
+            status = "تم توحيد القراءة لأقرب قيمة معروفة · راجعيها مع الصورة"
         st.caption(status)
         if candidate.get("candidate_provenance") == "full_image_text_boxes_position_grouping":
             st.caption("مُجمّع من سطور الكشف الكاملة بحسب موضعها؛ راجعي الصندوق على الصورة.")

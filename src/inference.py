@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -274,10 +276,31 @@ def _safe_region_value(name: str, raw: str | None, formatted_date: str | None) -
     if name in {"birth_date", "issue_date", "expiry_date"}:
         return (formatted_date, "needs_human_review") if formatted_date else (None, "unformatted_date_needs_review")
     known_values = {
-        "gender": {"ذكر", "أنثى"},
-        "religion": {"مسلم", "مسلمة", "مسيحي", "مسيحية"},
         "marital_status": {"أعزب", "عزباء", "آنسة", "أنسة", "متزوج", "متزوجة", "أرمل", "أرملة", "مطلق", "مطلقة"},
     }
+    if name in {"gender", "religion"}:
+        normalized = _normalize_arabic_label(raw)
+        choices = {
+            "gender": {
+                "ذكر": ("ذكر", "الذكر", "زكر"),
+                "أنثى": ("أنثى", "انثى", "الأنثى", "انثي"),
+            },
+            "religion": {
+                "مسلم": ("مسلم", "مسلمة", "الإسلام", "اسلام", "إسلامي"),
+                "مسيحي": ("مسيحي", "مسيحية", "مسيحى"),
+                "يهودي": ("يهودي", "يهودية", "يهودى"),
+            },
+        }[name]
+        scores = sorted(
+            ((max(SequenceMatcher(None, normalized, _normalize_arabic_label(alias)).ratio() for alias in aliases), canonical)
+             for canonical, aliases in choices.items()),
+            reverse=True,
+        )
+        if scores[0][0] >= 0.68 and (len(scores) == 1 or scores[0][0] - scores[1][0] >= 0.12):
+            canonical = scores[0][1]
+            status = "needs_human_review" if raw.strip() == canonical else "normalized_ocr_needs_human_review"
+            return canonical, status
+        return None, "text_did_not_match_known_value"
     if name in known_values:
         return (raw, "needs_human_review") if raw.strip() in known_values[name] else (None, "text_did_not_match_known_value")
     if name == "occupation":
@@ -285,6 +308,16 @@ def _safe_region_value(name: str, raw: str | None, formatted_date: str | None) -
             return None, "numeric_contamination_needs_review"
         return (raw, "needs_human_review") if len(raw.strip()) <= 45 else (None, "text_too_long_or_misaligned")
     return raw, "needs_human_review"
+
+
+def _normalize_arabic_label(value: str) -> str:
+    value = "".join(char for char in unicodedata.normalize("NFKD", value) if unicodedata.category(char) != "Mn")
+    value = value.replace("ـ", "")
+    value = value.translate(str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي", "ة": "ه"}))
+    value = "".join(char for char in value if "\u0621" <= char <= "\u064a")
+    if value.startswith("ال"):
+        value = value[2:]
+    return value
 
 
 def _numeric_reading_order_candidate(raw: str | None) -> str | None:

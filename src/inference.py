@@ -36,7 +36,10 @@ def create_ocr_engine(language: str = "ar", model_dir: str | Path | None = None,
     try:
         from paddleocr import PaddleOCR
     except ImportError as exc:
-        raise RuntimeError("PaddleOCR is not installed in this environment. Install PaddlePaddle for the selected backend, then install paddleocr.") from exc
+        raise RuntimeError(
+            f"PaddleOCR import failed ({type(exc).__name__}): {exc}. "
+            "Check the installed PaddleOCR dependencies for this Python environment."
+        ) from exc
 
     kwargs: dict[str, Any] = {
         "lang": language,

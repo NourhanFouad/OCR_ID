@@ -205,8 +205,6 @@ def _line_rect(line: dict[str, Any]) -> list[float] | None:
 def _front_fields_from_detected_lines(lines: list[dict[str, Any]], image_size: tuple[int, int]) -> dict[str, dict[str, Any]]:
     """Group full-image detections by the common front-card layout, not OCR order."""
     width, height = image_size
-    # Regions are normalized for photos where the card fills most of the frame.
-    # Horizontal separation keeps DOB and ID apart even though they share a row.
     regions = {
         "name": (0.50, 0.22, 1.00, 0.44),
         "address": (0.48, 0.44, 1.00, 0.66),
@@ -266,9 +264,6 @@ def _safe_region_value(name: str, raw: str | None, formatted_date: str | None) -
     if not raw:
         return None, "missing_or_ambiguous"
     if name == "national_id":
-        # Keep the detector's raw string for audit, but never expose adjacent
-        # words as part of an ID field. A display candidate is allowed only
-        # when the crop produced exactly fourteen recognized digits.
         digits = "".join(char for char in raw if char.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")).isdigit())
         check = validate_national_id_format(digits)
         valid = bool(check["checks"] and check["checks"][0]["passed"])
@@ -425,7 +420,6 @@ def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown",
                                 "confidence": min((line["confidence"] for line in variant_lines if line.get("confidence") is not None), default=None),
                             })
                 except RuntimeError:
-                    # Keep baseline usable when optional OpenCV preprocessing is unavailable.
                     retry_candidates = []
             context_line = None
             alternate_context_line = None
@@ -535,9 +529,6 @@ def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown",
                         "bbox": old.get("bbox"),
                         "source": old.get("source"),
                     }
-                    # Prefer a usable crop candidate when its model confidence
-                    # exceeds the full-image grouping score. Keep both readings
-                    # visible and retain the human-review status.
                     if (old.get("field_value_candidate") and isinstance(old.get("confidence"), (int, float))
                             and isinstance(detected.get("confidence"), (int, float))
                             and old["confidence"] > detected["confidence"]):
@@ -549,9 +540,6 @@ def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown",
                                 detected[key] = old[key]
                 region_fields[name] = detected
     mixed_numeric_candidates = [candidate for line in lines if (candidate := split_mixed_date_id_candidate(line.get("raw_text", ""), line.get("confidence"), line.get("bbox"))) is not None]
-    # The back-side top row can print issue date and national ID together.
-    # Surface a unique exact-length split as field candidates, while retaining
-    # the untouched crop OCR in raw_ocr_output for review.
     if active_profile and active_profile.startswith("egyptian_back") and region_fields and len(mixed_numeric_candidates) == 1:
         mixed = mixed_numeric_candidates[0]
         if mixed.get("national_id_candidate"):
@@ -567,8 +555,6 @@ def run_ocr(image_path: str | Path, language: str = "ar", side: str = "unknown",
                 region_fields["issue_date"]["mixed_line_candidate"] = mixed
     else:
         mixed_numeric_candidates = mixed_numeric_candidates
-    # If the printed DOB crop is unreadable, offer a clearly identified DOB
-    # decoded from the national ID. Never overwrite the printed OCR output.
     if active_profile and active_profile.startswith("egyptian_front") and region_fields:
         birth = region_fields.get("birth_date")
         national_id = region_fields.get("national_id")

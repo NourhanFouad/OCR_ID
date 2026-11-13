@@ -13,25 +13,16 @@ from typing import Any
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 
-# Approximate normalized zones for common Egyptian front ID layouts when the
-# card fills the frame. This is a candidate profile, not a universal detector.
 EGYPTIAN_FRONT_ZONES = {
     "name": (0.54, 0.20, 0.93, 0.45),
-    # Start below the name row; the previous 0.41 boundary clipped the name
-    # into the address crop on common photo layouts.
     "address": (0.40, 0.46, 0.94, 0.65),
     "birth_date": (0.06, 0.69, 0.39, 0.85),
     "national_id": (0.39, 0.68, 0.97, 0.86),
     "serial_number": (0.07, 0.86, 0.39, 0.98),
 }
 EGYPTIAN_BACK_ZONES = {
-    # Keep the two printed numeric regions separate; overlap encourages the
-    # recognizer to concatenate the issue date and national ID.
     "national_id": (0.46, 0.035, 0.82, 0.17),
     "issue_date": (0.23, 0.035, 0.455, 0.17),
-    # Occupation can wrap across two printed rows (e.g. degree + specialty).
-    # Keep the crop wide/tall enough to include the whole value.
-    # The first occupation row starts just below the top numeric ID/date row.
     "occupation": (0.30, 0.076, 0.98, 0.24),
     "gender": (0.67, 0.22, 0.80, 0.41),
     "religion": (0.49, 0.22, 0.67, 0.41),
@@ -101,7 +92,6 @@ def field_preprocessing_candidates(image: Image.Image) -> dict[str, Image.Image]
         raise RuntimeError("OCR retry preprocessing requires opencv-python-headless and numpy.") from exc
     rgb = np.asarray(image.convert("RGB"))
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    # Resize first so thin printed strokes reach the recognizer at useful scale.
     enlarged = cv2.resize(rgb, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
     gray_large = cv2.cvtColor(enlarged, cv2.COLOR_RGB2GRAY)
     clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8)).apply(gray_large)

@@ -217,8 +217,6 @@ if mode == "Run OCR on a new image":
     if uploaded is not None:
         try:
             image = ImageOps.exif_transpose(Image.open(io.BytesIO(uploaded.getvalue()))).convert("RGB")
-            # Cloud instances have tight RAM limits. Keep enough pixels for OCR
-            # while avoiding oversized full-image tensors and crop batches.
             image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
         except (UnidentifiedImageError, OSError) as exc:
             st.error(f"Could not decode image: {exc}")
@@ -273,8 +271,6 @@ if mode == "Run OCR on a new image":
                                 back_region_profile=try_back_regions,
                                 engine=get_ocr_engine(language, False),
                                 region_engine=get_ocr_engine(language, False) if use_regions else None,
-                                # The official PP-OCRv5 baseline never uses the experimental checkpoint's
-                                # numeric reversal heuristic.
                                 apply_numeric_reading_order_candidate=False,
                             )
                     except Exception as exc:

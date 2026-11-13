@@ -85,7 +85,6 @@ def assign_template_fields(lines: list[dict[str, Any]], side: str, image_size: t
         for field, (x1, y1, x2, y2) in FIELD_ROIS[side].items():
             if x1 <= x <= x2 and y1 <= y <= y2:
                 matches.append(field)
-        # Overlap is intentionally treated as ambiguous, never resolved by guessing.
         if len(matches) == 1:
             assigned[matches[0]].append(line)
 

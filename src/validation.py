@@ -31,9 +31,6 @@ def format_date_candidate(raw: str | None, allow_year_month: bool = False) -> st
     digit_chars = [char for char in raw if char.translate(DIGIT_TRANSLATION).isdigit()]
     digits = "".join(char.translate(DIGIT_TRANSLATION) for char in digit_chars)
     if allow_year_month:
-        # Source references use YYYY/MM, while the user-facing Egyptian
-        # issue-date display is MM/YYYY. Accept only an explicit, complete
-        # month token; a missing zero is never inferred.
         year_month = re.fullmatch(r"\s*([٠-٩0-9]{4})\s*[/.-]\s*([٠-٩0-9]{2})\s*", raw)
         month_year = re.fullmatch(r"\s*([٠-٩0-9]{2})\s*[/.-]\s*([٠-٩0-9]{4})\s*", raw)
         if year_month:
@@ -56,7 +53,6 @@ def format_date_candidate(raw: str | None, allow_year_month: bool = False) -> st
     if allow_year_month and len(digits) == 6:
         year, month = int(digits[:4]), int(digits[4:6])
         if 1 <= month <= 12 and 1900 <= year <= 2100:
-            # Egyptian back-side issue date is printed month/year (MM/YYYY).
             return f"{''.join(digit_chars[4:6])}/{''.join(digit_chars[:4])}"
     return None
 
